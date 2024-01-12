@@ -2,7 +2,6 @@
 #include <n64.h>
 #include "ed64_io.h"
 #include "hb_io.h"
-#include "sc64_io.h"
 #include "iodev.h"
 #include "zu.h"
 
@@ -32,7 +31,6 @@ int io_init(void)
     &everdrive64_x,
     &everdrive64_v2,
     &everdrive64_v1,
-    &sc64,
   };
 
   int n_devs = sizeof(devs) / sizeof(devs[0]);
