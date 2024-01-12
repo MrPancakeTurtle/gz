@@ -11,7 +11,7 @@ print("rom is " ..
 
 print("building gz")
 local make = os.getenv("MAKE")
-if make == nil or make == "" then make = "make" end
+if make == nil or make == "" then make = "make clean" end
 local _,_,make_result = os.execute(make ..
                                    " gz-" .. gz_version ..
                                    " gz-" .. gz_version .. "-hooks")
