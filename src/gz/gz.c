@@ -395,6 +395,9 @@ static void main_hook(void)
     menu_draw(gz.menu_main);
   menu_draw(gz.menu_global);
 
+  /* execute angle finder */
+  gz_angle_finder();
+
   /* execute and draw collision view */
   gz_col_view();
   gz_hit_view();
@@ -610,12 +613,17 @@ HOOK void input_hook(void)
         }
       z64_UpdateCtxtInput(&z64_ctxt);
       mask_input(&zi[0]);
-      for (int i = 0; i < 4; ++i)
-        if (gz.vcont_enabled[i]) {
-          zi[i].raw = raw_save[i];
-          zi[i].status = status_save[i];
-          gz_vcont_get(i, &zi[i]);
-        }
+      if (gz.angle_enable && gz.angle_use_input)
+          gz_angle_input_get(&zi[0]);
+      else
+      {
+        for (int i = 0; i < 4; ++i)
+          if (gz.vcont_enabled[i]) {
+            zi[i].raw = raw_save[i];
+            zi[i].status = status_save[i];
+            gz_vcont_get(i, &zi[i]);
+          }
+      }
     }
     if (gz.movie_state == MOVIE_RECORDING) {
       /* clear rerecords for empty movies */
@@ -1092,6 +1100,32 @@ static void main_return_proc(struct menu_item *item, void *data)
   gz_hide_menu();
 }
 
+#if defined(EMBEDDED_STATE)
+__attribute__((section(".data")))
+extern struct state_meta      embedded_state;
+#endif
+
+#if defined(EMBEDDED_MACRO)
+struct embedded_macro
+{
+  uint32_t          n_input;
+  uint32_t          n_seed;
+  z64_controller_t  input_start;
+  char              data[];
+};
+
+struct embedded_macro_sync
+{
+  uint32_t          n_oca_input;
+  uint32_t          n_oca_sync;
+  uint32_t          n_room_load;
+  char              data[];
+};
+
+__attribute__((section(".data")))
+extern struct embedded_macro  embedded_macro;
+#endif
+
 static void init(void)
 {
   /* startup */
@@ -1121,6 +1155,14 @@ static void init(void)
   gz.movie_oca_input_pos = 0;
   gz.movie_oca_sync_pos = 0;
   gz.movie_room_load_pos = 0;
+  gz.angle_desired = 0;
+  gz.angle_best_matching = 0;
+  gz.angle_enable = 0;
+  gz.angle_x = 0;
+  gz.angle_y = 0;
+  gz.angle_use_min = 0;
+  gz.angle_r_min = 59;
+  gz.angle_use_input = 0;
   gz.z_input_mask.pad = BUTTON_L | BUTTON_D_RIGHT | BUTTON_D_LEFT |
                         BUTTON_D_DOWN | BUTTON_D_UP;
   gz.z_input_mask.x = 0;
@@ -1163,6 +1205,52 @@ static void init(void)
 
   /* initialize io device */
   io_init();
+
+#if defined(EMBEDDED_STATE)
+  {
+    gz.state_buf[0] = &embedded_state;
+  }
+#endif
+
+#if defined(EMBEDDED_MACRO)
+  {
+    uint32_t n_input;
+    uint32_t n_seed;
+    memcpy(&n_input, &embedded_macro.n_input, sizeof(n_input));
+    memcpy(&n_seed, &embedded_macro.n_seed, sizeof(n_seed));
+    struct movie_input *input = (void *)embedded_macro.data;
+    struct movie_seed *seed = (void *)&input[n_input];
+    memcpy(&gz.movie_input_start, &embedded_macro.input_start,
+           sizeof(gz.movie_input_start));
+    vector_insert(&gz.movie_input, 0, n_input, input);
+    vector_insert(&gz.movie_seed, 0, n_seed, seed);
+    struct embedded_macro_sync *sync = (void *)&seed[n_seed];
+    uint32_t n_oca_input;
+    memcpy(&n_oca_input, &sync->n_oca_input, sizeof(n_oca_input));
+    if (n_oca_input != 0xFFFFFFFF) {
+      uint32_t n_oca_sync;
+      uint32_t n_room_load;
+      memcpy(&n_oca_sync, &sync->n_oca_sync, sizeof(n_oca_sync));
+      memcpy(&n_room_load, &sync->n_room_load, sizeof(n_room_load));
+      struct movie_oca_input *oca_input = (void *)sync->data;
+      struct movie_oca_sync *oca_sync = (void *)&oca_input[n_oca_input];
+      struct movie_room_load *room_load = (void *)&oca_sync[n_oca_sync];
+      vector_insert(&gz.movie_oca_input, 0, n_oca_input, oca_input);
+      vector_insert(&gz.movie_oca_sync, 0, n_oca_sync, oca_sync);
+      vector_insert(&gz.movie_room_load, 0, n_room_load, room_load);
+      uint32_t *rerecording = (void *)&room_load[n_room_load];
+      uint32_t rerecords;
+      memcpy(&rerecords, &rerecording[0], sizeof(rerecords));
+      if (rerecords != 0xFFFFFFFF) {
+        uint32_t last_recorded_frame;
+        memcpy(&last_recorded_frame, &rerecording[1],
+               sizeof(last_recorded_frame));
+        gz.movie_rerecords = rerecords;
+        gz.movie_last_recorded_frame = last_recorded_frame;
+      }
+    }
+  }
+#endif
 
   /* load settings */
   if (input_z_pad() == BUTTON_START || !settings_load(gz.profile))

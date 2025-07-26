@@ -167,6 +167,14 @@ struct gz
   uint32_t              disp_hook_size[4];
   uint32_t              disp_hook_p[4];
   uint32_t              disp_hook_d[4];
+  _Bool                 angle_enable;
+  z64_angle_t           angle_desired;
+  z64_angle_t           angle_best_matching;
+  int16_t               angle_x;
+  int16_t               angle_y;
+  _Bool                 angle_use_min;
+  uint16_t              angle_r_min;
+  _Bool                 angle_use_input;
   enum movie_state      movie_state;
   z64_controller_t      movie_input_start;
   struct vector         movie_input;
@@ -267,6 +275,9 @@ void          gz_movie_seek(int frame);
 
 void          gz_vcont_set(int port, _Bool plugged, z64_controller_t *cont);
 void          gz_vcont_get(int port, z64_input_t *input);
+
+void          gz_angle_finder(void);
+void          gz_angle_input_get(z64_input_t *input);
 
 void          gz_col_view(void);
 void          gz_hit_view(void);
