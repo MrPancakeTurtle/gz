@@ -3,7 +3,19 @@
 #include <stdint.h>
 #include <n64.h>
 #include "gu.h"
-#include "z64_version.h"
+
+#ifndef Z64_VERSION
+# error no z64 version specified
+#endif
+
+#define Z64_OOT10             0x00
+#define Z64_OOT11             0x01
+#define Z64_OOT12             0x02
+#define Z64_OOTMQJ            0x03
+#define Z64_OOTMQU            0x04
+#define Z64_OOTGCJ            0x05
+#define Z64_OOTGCU            0x06
+#define Z64_OOTCEJ            0x07
 
 #define Z64_SCREEN_WIDTH      320
 #define Z64_SCREEN_HEIGHT     240
@@ -56,8 +68,7 @@ struct z64_arena
       Z64_VERSION == Z64_OOTMQU || \
       Z64_VERSION == Z64_OOTGCJ || \
       Z64_VERSION == Z64_OOTGCU || \
-      Z64_VERSION == Z64_OOTCEJ || \
-      Z64_VERSION == Z64_OOTIQC
+      Z64_VERSION == Z64_OOTCEJ
                                               /* 0x0008 */
 #endif
 };
@@ -84,8 +95,7 @@ struct z64_arena_node
       Z64_VERSION == Z64_OOTMQU || \
       Z64_VERSION == Z64_OOTGCJ || \
       Z64_VERSION == Z64_OOTGCU || \
-      Z64_VERSION == Z64_OOTCEJ || \
-      Z64_VERSION == Z64_OOTIQC
+      Z64_VERSION == Z64_OOTCEJ
   char              data[];                   /* 0x0010 */
 #endif
 };
@@ -776,8 +786,22 @@ typedef struct
   uint8_t           z_targeting;              /* 0x140C */
   char              unk_0x140D[0x0001];       /* 0x140D */
   uint16_t          disable_music_flag;       /* 0x140E */
+#if Z64_VERSION == Z64_OOT10 || \
+    Z64_VERSION == Z64_OOT11 || \
+    Z64_VERSION == Z64_OOT12
+  char              unk_0x1410[0x0020];       /* 0x1410 */
+  z64_gameinfo_t   *gameinfo;                 /* 0x1430 */
+  char              unk_0x1434[0x001C];       /* 0x1434 */
+#elif Z64_VERSION == Z64_OOTMQJ || \
+      Z64_VERSION == Z64_OOTMQU || \
+      Z64_VERSION == Z64_OOTGCJ || \
+      Z64_VERSION == Z64_OOTGCU || \
+      Z64_VERSION == Z64_OOTCEJ
   char              unk_0x1410[0x0018];       /* 0x1410 */
-                                              /* 0x1428 */
+  z64_gameinfo_t   *gameinfo;                 /* 0x1428 */
+  char              unk_0x142C[0x0024];       /* 0x142C */
+#endif
+                                              /* 0x1450 */
 } z64_file_t;
 
 typedef struct
@@ -1584,9 +1608,7 @@ typedef struct
   z64_view_t        view;                     /* 0x000B8 */
   char              unk_0xE0[0x0090];         /* 0x001E0 */
   z64_actor_t      *camera_focus;             /* 0x00270 */
-  char              unk_0x274[0x00A2];        /* 0x00274 */
-  uint16_t          camera_angle;             /* 0x00316 */
-  char              unk_0x318[0x000A];        /* 0x00318 */
+  char              unk_0x274[0x00AE];        /* 0x00274 */
   uint16_t          camera_mode;              /* 0x00322 */
   char              unk_0x324[0x001A];        /* 0x00324 */
   uint16_t          camera_flag_1;            /* 0x0033E */
@@ -2127,8 +2149,7 @@ typedef struct
       Z64_VERSION == Z64_OOTMQU || \
       Z64_VERSION == Z64_OOTGCJ || \
       Z64_VERSION == Z64_OOTGCU || \
-      Z64_VERSION == Z64_OOTCEJ || \
-      Z64_VERSION == Z64_OOTIQC
+      Z64_VERSION == Z64_OOTCEJ
 # define z64_icon_item_static                   8
 # define z64_icon_item_24_static                9
 # define z64_icon_item_field_static             10
@@ -2197,10 +2218,6 @@ typedef struct
 
 /* data */
 #define     z64_extern            extern __attribute__ ((section(".data")))
-z64_extern  void                 *__osBbSramAddress;
-z64_extern  uint32_t              __osBbSramSize;
-z64_extern  uint32_t              __osBbIsBb;
-z64_extern  uint32_t              __osBbHackFlags;
 z64_extern  OSThread              z64_thread_idle;
 z64_extern  OSThread              z64_thread_main;
 z64_extern  OSThread              z64_thread_dmamgr;
@@ -2243,15 +2260,13 @@ z64_extern  int32_t               z64_letterbox_target;
 z64_extern  int32_t               z64_letterbox_current;
 z64_extern  z64_play_ovl_t        z64_play_ovl_tab[2];
 z64_extern  z64_play_ovl_t        z64_play_ovl_ptr;
-z64_extern  char                  code_800EC960_c_data[];
 z64_extern  char                  z64_sound_state[];
 z64_extern  z64_night_sfx_t       z64_night_sfx[20];
 z64_extern  char                  z64_ocarina_state[];
-z64_extern  int32_t               z64_song_play_counter;
+z64_extern  uint32_t              z64_ocarina_counter;
 z64_extern  uint8_t               z64_ocarina_song_length;
 z64_extern  char                  z64_scarecrow_song[];
 z64_extern  char                  z64_song_ptr[];
-z64_extern  uint32_t              z64_song_rec_counter;
 z64_extern  uint8_t               z64_ocarina_button_state;
 z64_extern  uint8_t               z64_sfx_write_pos;
 z64_extern  uint8_t               z64_sfx_read_pos;
@@ -2261,18 +2276,14 @@ z64_extern  uint8_t               z64_afx_cfg;
 z64_extern  uint8_t               z64_afx_config_busy;
 z64_extern  uint32_t              z64_random;
 z64_extern  char                  z64_message_state[];
-z64_extern  char                  z64_textbox_skipped;
 z64_extern  char                  z64_staff_notes[];
 z64_extern  int16_t               z64_message_select_state;
-z64_extern  char                  z64_message_icon_state[];
-z64_extern  char                  z64_message_note_icon_state[];
 z64_extern  int16_t               z64_gameover_countdown;
 z64_extern  z64_pfx_t             z64_pfx;
 z64_extern  char                  z64_fw_state_1[];
 z64_extern  char                  z64_fw_state_2[];
 z64_extern  char                  z64_camera_state[];
 z64_extern  z64_file_t            z64_file;
-z64_extern  z64_gameinfo_t       *z64_gameinfo;
 z64_extern  char                  z64_cs_state[];
 z64_extern  z64_light_queue_t     z64_light_queue;
 z64_extern  z64_arena_t           z64_game_arena;
@@ -2290,9 +2301,8 @@ z64_extern  OSThread              z64_thread_audio;
 z64_extern  MtxF                (*z64_mtx_stack)[20];
 z64_extern  MtxF                 *z64_mtx_stack_top;
 z64_extern  OSThread              z64_thread_fault;
-z64_extern  char                  code_800EC960_c_bss[];
 z64_extern  char                  z64_song_state[];
-z64_extern  uint32_t              z64_ocarina_counter;
+z64_extern  int32_t               z64_song_counter;
 z64_extern  char                  z64_sfx_mute[];
 z64_extern  z64_seq_ctl_t         z64_seq_ctl[4];
 z64_extern  char                  z64_afx[];
@@ -2300,7 +2310,6 @@ z64_extern  uint32_t              z64_afx_counter;
 z64_extern  uint8_t               z64_afx_cmd_write_pos;
 z64_extern  uint8_t               z64_afx_cmd_read_pos;
 z64_extern  z64_afx_cmd_t         z64_afx_cmd_buf[0x100];
-z64_extern  char                  z_message_c_bss[];
 z64_extern  char                  z64_zimg[];
 z64_extern  char                  z64_disp[];
 z64_extern  z64_ctxt_t            z64_ctxt;
@@ -2310,12 +2319,9 @@ z64_extern  char                  z64_cimg[];
 z64_extern  char                  z64_item_highlight_vram[];
 
 /* functions */
-void      z64_Actor_UpdateBgCheckInfo (z64_game_t *game, z64_actor_t *actor,
-                                       float wall_check_height,
-                                       float wall_check_radius,
-                                       float ceiling_check_height,
-                                       int32_t flags);
 void      z64_DrawActors              (z64_game_t *game, void *actor_ctxt);
+void      z64_DeleteActor             (z64_game_t *game, void *actor_ctxt,
+                                       z64_actor_t *actor);
 void      z64_SpawnActor              (void *actor_ctxt, z64_game_t *game,
                                        uint16_t actor_id, float x, float y,
                                        float z, uint16_t rx, uint16_t ry,
@@ -2364,10 +2370,6 @@ void      z64_ConfigureAfx            (uint8_t cfg);
 uint32_t  z64_AfxRand                 (void);
 void      z64_OcarinaUpdate           (void);
 void      z64_ResetAudio              (uint8_t cfg);
-void      z64_Audio_PlaySfxGeneral    (uint16_t sfx_id, z64_xyzf_t *pos,
-                                       uint8_t token, float *freq_scale,
-                                       float *vol, int8_t *reverb_add);
-uint8_t   z64_Audio_IsSfxPlaying      (uint32_t sfx_id);
 int       z64_CheckAfxConfigBusy      (void);
 uint32_t  z64_LoadOverlay             (uint32_t vrom_start, uint32_t vrom_end,
                                        uint32_t vram_start, uint32_t vram_end,

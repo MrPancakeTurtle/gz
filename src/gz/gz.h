@@ -55,8 +55,8 @@ enum holl_view_state
   HOLLVIEW_INACTIVE,
   HOLLVIEW_START,
   HOLLVIEW_ACTIVE,
+  HOLLVIEW_BEGIN_STOP,
   HOLLVIEW_STOP,
-  HOLLVIEW_STOPPING,
 };
 
 enum path_view_state
@@ -70,15 +70,6 @@ enum path_view_state
   PATHVIEW_RESTARTING,
 };
 
-enum guard_view_state
-{
-  GUARDVIEW_INACTIVE,
-  GUARDVIEW_START,
-  GUARDVIEW_ACTIVE,
-  GUARDVIEW_BEGIN_STOP,
-  GUARDVIEW_STOP,
-};
-
 enum cam_mode
 {
   CAMMODE_CAMERA,
@@ -90,6 +81,29 @@ enum cam_bhv
   CAMBHV_MANUAL,
   CAMBHV_BIRDSEYE,
   CAMBHV_RADIAL,
+};
+
+struct memory_file
+{
+  z64_file_t            z_file;
+  _Bool                 entrance_override;
+  int32_t               next_entrance;
+  uint16_t              scene_index;
+  uint32_t              scene_flags[9];
+  qs510_t               start_icon_dd;
+  uint16_t              pause_screen;
+  int16_t               item_screen_cursor;
+  int16_t               quest_screen_cursor;
+  int16_t               equip_screen_cursor;
+  int16_t               map_screen_cursor;
+  int16_t               item_screen_x;
+  int16_t               equipment_screen_x;
+  int16_t               item_screen_y;
+  int16_t               equipment_screen_y;
+  int16_t               pause_screen_cursor;
+  int16_t               quest_screen_item;
+  int16_t               quest_screen_hilite;
+  int16_t               quest_screen_song;
 };
 
 enum movie_state
@@ -167,14 +181,6 @@ struct gz
   uint32_t              disp_hook_size[4];
   uint32_t              disp_hook_p[4];
   uint32_t              disp_hook_d[4];
-  _Bool                 angle_enable;
-  z64_angle_t           angle_desired;
-  z64_angle_t           angle_best_matching;
-  int16_t               angle_x;
-  int16_t               angle_y;
-  _Bool                 angle_use_min;
-  uint16_t              angle_r_min;
-  _Bool                 angle_use_input;
   enum movie_state      movie_state;
   z64_controller_t      movie_input_start;
   struct vector         movie_input;
@@ -207,7 +213,6 @@ struct gz
   enum cull_view_state  cull_view_state;
   enum path_view_state  path_view_state;
   enum holl_view_state  holl_view_state;
-  enum guard_view_state guard_view_state;
   _Bool                 noclip_on;
   _Bool                 hide_rooms;
   _Bool                 hide_actors;
@@ -225,7 +230,6 @@ struct gz
   _Bool                 reset_flag;
   _Bool                 frame_flag;
   struct selected_actor selected_actor;
-  int                   metronome_timer;
 };
 
 void          gz_apply_settings();
@@ -276,15 +280,11 @@ void          gz_movie_seek(int frame);
 void          gz_vcont_set(int port, _Bool plugged, z64_controller_t *cont);
 void          gz_vcont_get(int port, z64_input_t *input);
 
-void          gz_angle_finder(void);
-void          gz_angle_input_get(z64_input_t *input);
-
 void          gz_col_view(void);
 void          gz_hit_view(void);
 void          gz_cull_view(void);
 void          gz_path_view(void);
 void          gz_holl_view(void);
-void          gz_guard_view(void);
 
 void          gz_update_cam(void);
 void          gz_free_view(void);

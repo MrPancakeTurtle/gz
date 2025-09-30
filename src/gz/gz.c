@@ -160,11 +160,11 @@ static void main_hook(void)
            sizeof(z64_game.if_ctxt.restriction_flags));
   }
   if (settings->cheats & (1 << CHEAT_NOMAP))
-    z64_gameinfo->minimap_disabled = 1;
+    z64_file.gameinfo->minimap_disabled = 1;
   if (settings->cheats & (1 << CHEAT_ISG))
     z64_link.sword_state = 1;
   if (settings->cheats & (1 << CHEAT_QUICKTEXT))
-    z64_textbox_skipped = 1;
+    *(uint8_t *)(&z64_message_state[0x000C]) = 0x01;
   if (settings->cheats & (1 << CHEAT_NOHUD))
       z64_file.hud_flag = 0x001;
 
@@ -363,7 +363,7 @@ static void main_hook(void)
     else if (settings->bits.lag_unit == SETTINGS_LAG_SECONDS)
       gfx_printf(font, x, settings->lag_counter_y, "%8.2f", lag_frames / 60.f);
   }
-  gz.frame_counter += z64_gameinfo->update_rate;
+  gz.frame_counter += z64_file.gameinfo->update_rate;
 
   /* execute and draw timer */
   if (!gz.timer_active)
@@ -395,16 +395,12 @@ static void main_hook(void)
     menu_draw(gz.menu_main);
   menu_draw(gz.menu_global);
 
-  /* execute angle finder */
-  gz_angle_finder();
-
   /* execute and draw collision view */
   gz_col_view();
   gz_hit_view();
   gz_cull_view();
   gz_path_view();
   gz_holl_view();
-  gz_guard_view();
 
   /* execute free camera in view mode */
   gz_free_view();
@@ -479,13 +475,6 @@ static void main_hook(void)
   gfx_flush();
 }
 
-static void macro_oom(void)
-{
-    gz_log("out of memory, stopping macro");
-    gz.frames_queued = 0;
-    gz.movie_state = MOVIE_IDLE;
-}
-
 HOOK int32_t room_load_sync_hook(OSMesgQueue *mq, OSMesg *msg, int32_t flag)
 {
   maybe_init_gp();
@@ -506,12 +495,8 @@ HOOK int32_t room_load_sync_hook(OSMesgQueue *mq, OSMesg *msg, int32_t flag)
         rl = vector_insert(&gz.movie_room_load,
                            gz.movie_room_load_pos, 1, NULL);
       }
-      if (rl) {
-        rl->frame_idx = gz.movie_frame;
-        ++gz.movie_room_load_pos;
-      }
-      else
-        macro_oom();
+      rl->frame_idx = gz.movie_frame;
+      ++gz.movie_room_load_pos;
       gz.room_load_flag = 1;
     }
     return result;
@@ -613,17 +598,12 @@ HOOK void input_hook(void)
         }
       z64_UpdateCtxtInput(&z64_ctxt);
       mask_input(&zi[0]);
-      if (gz.angle_enable && gz.angle_use_input)
-          gz_angle_input_get(&zi[0]);
-      else
-      {
-        for (int i = 0; i < 4; ++i)
-          if (gz.vcont_enabled[i]) {
-            zi[i].raw = raw_save[i];
-            zi[i].status = status_save[i];
-            gz_vcont_get(i, &zi[i]);
-          }
-      }
+      for (int i = 0; i < 4; ++i)
+        if (gz.vcont_enabled[i]) {
+          zi[i].raw = raw_save[i];
+          zi[i].status = status_save[i];
+          gz_vcont_get(i, &zi[i]);
+        }
     }
     if (gz.movie_state == MOVIE_RECORDING) {
       /* clear rerecords for empty movies */
@@ -636,16 +616,12 @@ HOOK void input_hook(void)
           vector_reserve(&gz.movie_input, 128);
         vector_push_back(&gz.movie_input, 1, NULL);
       }
-      if (gz.movie_frame < gz.movie_input.size) {
-        /* if the last recorded frame is not the previous frame,
-           increment the rerecord count */
-        if (gz.movie_last_recorded_frame >= gz.movie_frame)
-          ++gz.movie_rerecords;
-        gz.movie_last_recorded_frame = gz.movie_frame++;
-        z_to_movie(gz.movie_last_recorded_frame, &zi[0], gz.reset_flag);
-      }
-      else
-        macro_oom();
+      /* if the last recorded frame is not the previous frame,
+         increment the rerecord count */
+      if (gz.movie_last_recorded_frame >= gz.movie_frame)
+        ++gz.movie_rerecords;
+      gz.movie_last_recorded_frame = gz.movie_frame++;
+      z_to_movie(gz.movie_last_recorded_frame, &zi[0], gz.reset_flag);
     }
     else if (gz.movie_state == MOVIE_PLAYING) {
       if (gz.movie_frame >= gz.movie_input.size) {
@@ -789,14 +765,10 @@ HOOK void srand_hook(uint32_t seed)
       /* insert a recorded seed */
       struct movie_seed *ms;
       ms = vector_insert(&gz.movie_seed, gz.movie_seed_pos, 1, NULL);
-      if (ms) {
-        ms->frame_idx = gz.movie_frame;
-        ms->old_seed = z64_random;
-        ms->new_seed = seed;
-        ++gz.movie_seed_pos;
-      }
-      else
-        macro_oom();
+      ms->frame_idx = gz.movie_frame;
+      ms->old_seed = z64_random;
+      ms->new_seed = seed;
+      ++gz.movie_seed_pos;
     }
     else if (gz.movie_state == MOVIE_PLAYING) {
       /* restore a recorded seed, if conditions match */
@@ -843,67 +815,6 @@ HOOK void ocarina_update_hook(void)
   if (!gz.ready)
     z64_OcarinaUpdate();
   else if (gz.frame_flag) {
-    /* do ocarina sync */
-    int audio_frames;
-    /* sync hack by default when frame advancing or the song will softlock */
-    if (gz.frames_queued >= 0)
-      audio_frames = z64_gameinfo->update_rate;
-    else
-      audio_frames = z64_afx_counter - z64_ocarina_counter;
-    /* if recording, use the sync hack setting to decide the value to use */
-    if (gz.movie_state == MOVIE_RECORDING) {
-      /** note: when loading a state where the saved frame flag is 1 (i.e. the
-          game was running and not paused with frame advance when the state was
-          saved), and ocarina input/sync hacks are disabled, ocarina input and
-          sync data for the loaded state frame will be overwritten with the
-          current actual sync info (which will be lots of frames due to
-          savestate load lag) and real controller input immediately after
-          loading a state (regardless of being paused or not). this seems to be
-          unavoidable due to how states are currently implemented. **/
-      if (settings->bits.hack_oca_sync)
-        audio_frames = z64_gameinfo->update_rate;
-      /* record the value if it differs from the sync hack */
-      if (audio_frames != z64_gameinfo->update_rate) {
-        struct movie_oca_sync *os;
-        os = vector_at(&gz.movie_oca_sync, gz.movie_oca_sync_pos);
-        if (!os || os->frame_idx != gz.movie_frame) {
-          os = vector_insert(&gz.movie_oca_sync,
-                             gz.movie_oca_sync_pos, 1, NULL);
-        }
-        if (os) {
-          os->frame_idx = gz.movie_frame;
-          os->audio_frames = audio_frames;
-          ++gz.movie_oca_sync_pos;
-        }
-        else
-          macro_oom();
-        gz.oca_sync_flag = 1;
-      }
-    }
-    /* if in playback, use a recorded value, or sync hack if there is none */
-    else if (gz.movie_state == MOVIE_PLAYING) {
-      struct movie_oca_sync *os;
-      os = vector_at(&gz.movie_oca_sync, gz.movie_oca_sync_pos);
-      if (os && os->frame_idx == gz.movie_frame) {
-        audio_frames = os->audio_frames;
-        ++gz.movie_oca_sync_pos;
-      }
-      else
-        audio_frames = z64_gameinfo->update_rate;
-    }
-    /* update audio counters */
-    {
-      z64_ocarina_counter += audio_frames;
-      uint32_t play_frames = z64_ocarina_counter - z64_song_play_counter;
-      uint32_t rec_frames = z64_ocarina_counter - z64_song_rec_counter;
-      z64_ocarina_counter = z64_afx_counter;
-      z64_song_play_counter = z64_ocarina_counter - play_frames;
-      z64_song_rec_counter = z64_ocarina_counter - rec_frames;
-    }
-    /* advance ocarina minigame metronome timer */
-    if (gz.metronome_timer > 0)
-      gz.metronome_timer--;
-    /* execute ocarina frame */
     z64_OcarinaUpdate();
     /* if recording over sync events, remove them */
     if (gz.movie_state == MOVIE_RECORDING && !gz.oca_input_flag) {
@@ -925,12 +836,9 @@ HOOK void ocarina_update_hook(void)
     }
   }
   else {
-    /* update audio counters to avoid desync when resuming */
-    uint32_t play_frames = z64_ocarina_counter - z64_song_play_counter;
-    uint32_t rec_frames = z64_ocarina_counter - z64_song_rec_counter;
-    z64_ocarina_counter = z64_afx_counter;
-    z64_song_play_counter = z64_ocarina_counter - play_frames;
-    z64_song_rec_counter = z64_ocarina_counter - rec_frames;
+    /* update audio counters manually to avoid desync when resuming */
+    z64_song_counter = z64_afx_counter;
+    z64_ocarina_counter = z64_song_counter;
   }
 }
 
@@ -943,7 +851,6 @@ HOOK void ocarina_input_hook(void *a0, z64_input_t *input, int a2)
   if (gz.ready && gz.movie_state != MOVIE_IDLE && gz.movie_frame > 0) {
     /* if recording, use the sync hack setting to decide the input to use */
     if (gz.movie_state == MOVIE_RECORDING) {
-      /** see note in ocarina_update_hook **/
       if (settings->bits.hack_oca_input)
         movie_to_z(gz.movie_frame - 1, input, NULL);
       else {
@@ -954,15 +861,11 @@ HOOK void ocarina_input_hook(void *a0, z64_input_t *input, int a2)
           oi = vector_insert(&gz.movie_oca_input,
                              gz.movie_oca_input_pos, 1, NULL);
         }
-        if (oi) {
-          oi->frame_idx = gz.movie_frame;
-          oi->pad = input->raw.pad;
-          oi->adjusted_x = input->adjusted_x;
-          oi->adjusted_y = input->adjusted_y;
-          ++gz.movie_oca_input_pos;
-        }
-        else
-          macro_oom();
+        oi->frame_idx = gz.movie_frame;
+        oi->pad = input->raw.pad;
+        oi->adjusted_x = input->adjusted_x;
+        oi->adjusted_y = input->adjusted_y;
+        ++gz.movie_oca_input_pos;
         gz.oca_input_flag = 1;
       }
     }
@@ -983,6 +886,84 @@ HOOK void ocarina_input_hook(void *a0, z64_input_t *input, int a2)
       }
     }
   }
+}
+
+HOOK void ocarina_sync_hook(void)
+{
+  maybe_init_gp();
+  /* the hook is placed in the middle of a function where there is not normally
+     a function call, so some registers need to be saved
+  */
+  struct
+  {
+    uint32_t v1;
+    uint32_t a0;
+    uint32_t a1;
+    uint32_t a3;
+    uint32_t t0;
+    uint32_t t1;
+    uint32_t t6;
+  } regs;
+  __asm__ ("la      $v0, %[regs];"
+           "sw      $v1, 0x0000($v0);"
+           "sw      $a1, 0x0008($v0);"
+           "sw      $a3, 0x000C($v0);"
+           "sw      $t0, 0x0010($v0);"
+           "sw      $t1, 0x0014($v0);"
+           "sw      $t6, 0x0018($v0);"
+           : [regs] "=m"(regs) :: "v0");
+  int audio_frames;
+  /* default behavior */
+  if (regs.t6)
+    audio_frames = z64_song_counter - z64_ocarina_counter;
+  else
+    audio_frames = 3;
+  /* gz override */
+  if (gz.ready) {
+    /* sync hack by default when frame advancing or the song will softlock */
+    if (gz.frames_queued >= 0)
+      audio_frames = 3;
+    /* if recording, use the sync hack setting to decide the value to use */
+    if (gz.movie_state == MOVIE_RECORDING) {
+      if (settings->bits.hack_oca_sync)
+        audio_frames = 3;
+      /* record the value if it differs from the sync hack */
+      if (audio_frames != 3) {
+        struct movie_oca_sync *os;
+        os = vector_at(&gz.movie_oca_sync, gz.movie_oca_sync_pos);
+        if (!os || os->frame_idx != gz.movie_frame) {
+          os = vector_insert(&gz.movie_oca_sync,
+                             gz.movie_oca_sync_pos, 1, NULL);
+        }
+        os->frame_idx = gz.movie_frame;
+        os->audio_frames = audio_frames;
+        ++gz.movie_oca_sync_pos;
+        gz.oca_sync_flag = 1;
+      }
+    }
+    /* if in playback, use a recorded value, or sync hack if there is none */
+    else if (gz.movie_state == MOVIE_PLAYING) {
+      struct movie_oca_sync *os;
+      os = vector_at(&gz.movie_oca_sync, gz.movie_oca_sync_pos);
+      if (os && os->frame_idx == gz.movie_frame) {
+        audio_frames = os->audio_frames;
+        ++gz.movie_oca_sync_pos;
+      }
+      else
+        audio_frames = 3;
+    }
+  }
+  regs.a0 = audio_frames;
+  __asm__ ("la      $v0, %[regs];"
+           "lw      $v1, 0x0000($v0);"
+           "lw      $a0, 0x0004($v0);"
+           "lw      $a1, 0x0008($v0);"
+           "lw      $a3, 0x000C($v0);"
+           "lw      $t0, 0x0010($v0);"
+           "lw      $t1, 0x0014($v0);"
+           "lw      $t6, 0x0018($v0);"
+           :: [regs] "m"(regs)
+           : "v0", "v1", "a0", "a1", "a3", "t0", "t1", "t6");
 }
 
 HOOK uint32_t afx_rand_hook(void)
@@ -1033,8 +1014,6 @@ HOOK void guPerspectiveF_hook(MtxF *mf)
 
 HOOK void camera_hook(void *camera)
 {
-  maybe_init_gp();
-
   void (*camera_func)(void *camera);
   __asm__ ("sw      $t9, %[camera_func]"
            : [camera_func] "=m"(camera_func));
@@ -1052,48 +1031,6 @@ HOOK void camera_hook(void *camera)
   z64_xyzf_t vf;
   vec3f_py(&vf, gz.cam_pitch, gz.cam_yaw);
   vec3f_add(camera_at, camera_eye, &vf);
-}
-
-HOOK void metronome_start_hook(uint16_t sfx_id, z64_xyzf_t *pos, uint8_t token,
-                               float *freq_scale, float *vol,
-                               int8_t *reverb_add)
-{
-  maybe_init_gp();
-
-  /* 0x4836 is NA_SE_SY_METRONOME - this is for iQue */
-  if (gz.ready && sfx_id == 0x4836)
-    gz.metronome_timer = 17;
-
-  return z64_Audio_PlaySfxGeneral(sfx_id, pos, token, freq_scale, vol,
-                                  reverb_add);
-}
-
-HOOK uint8_t metronome_check_hook(uint32_t sfx_id)
-{
-  maybe_init_gp();
-
-  /* use a sync hack when playing, recording, or frame advancing */
-  if (gz.ready && (gz.movie_state != MOVIE_IDLE || gz.frames_queued >= 0))
-    return gz.metronome_timer > 0;
-  else
-    return z64_Audio_IsSfxPlaying(sfx_id);
-}
-
-/* Replaces call to Actor_UpdateBgCheckInfo in EnBomChu_WaitForRelease to
-   simulate GC double-explosion behavior, probably caused by the GC emulator
-   reading 0s when the floor poly is NULL. */
-HOOK void bombchu_floor_poly_hook(z64_game_t *game, z64_actor_t *actor,
-                                  float wall_check_height,
-                                  float wall_check_radius,
-                                  float ceiling_check_height, int32_t flags)
-{
-  maybe_init_gp();
-  z64_Actor_UpdateBgCheckInfo(game, actor, wall_check_height,
-                              wall_check_radius, ceiling_check_height, flags);
-  if (settings->bits.gc_oob_chu && actor->floor_poly == NULL) {
-    static z64_col_poly_t zero_poly = { 0 };
-    actor->floor_poly = &zero_poly;
-  }
 }
 
 static void main_return_proc(struct menu_item *item, void *data)
@@ -1156,16 +1093,7 @@ static void init(void)
   gz.movie_oca_input_pos = 0;
   gz.movie_oca_sync_pos = 0;
   gz.movie_room_load_pos = 0;
-  gz.angle_desired = 0;
-  gz.angle_best_matching = 0;
-  gz.angle_enable = 0;
-  gz.angle_x = 0;
-  gz.angle_y = 0;
-  gz.angle_use_min = 0;
-  gz.angle_r_min = 59;
-  gz.angle_use_input = 0;
-  gz.z_input_mask.pad = BUTTON_L | BUTTON_D_RIGHT | BUTTON_D_LEFT |
-                        BUTTON_D_DOWN | BUTTON_D_UP;
+  gz.z_input_mask.pad = BUTTON_L;
   gz.z_input_mask.x = 0;
   gz.z_input_mask.y = 0;
   for (int i = 0; i < 4; ++i) {
@@ -1185,7 +1113,6 @@ static void init(void)
   gz.path_view_state = PATHVIEW_INACTIVE;
   gz.holl_view_state = HOLLVIEW_INACTIVE;
   gz.noclip_on = 0;
-  gz.guard_view_state = GUARDVIEW_INACTIVE;
   gz.hide_rooms = 0;
   gz.hide_actors = 0;
   gz.free_cam = 0;
@@ -1313,7 +1240,6 @@ static void init(void)
 
 int main()
 {
-  maybe_init_gp();
   if (!gz.ready)
     init();
   state_main_hook();

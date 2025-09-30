@@ -881,7 +881,7 @@ void gz_col_view(void)
   _Bool enable = zu_in_game() &&
                  (z64_game.pause_ctxt.state < 2 ||
                   (z64_game.pause_ctxt.state == 2 &&
-                   z64_gameinfo->screenshot_state < 3));
+                   z64_file.gameinfo->screenshot_state < 3));
   _Bool init = gz.col_view_state == COLVIEW_START ||
                gz.col_view_state == COLVIEW_RESTARTING;
 
@@ -937,11 +937,6 @@ void gz_col_view(void)
 
     /* allocate static polygon display list */
     stc_poly = malloc(sizeof(*stc_poly) * stc_poly_cap);
-    if (!stc_poly) {
-      gz.col_view_state = COLVIEW_STOPPING;
-      gz_log("out of memory, stopping colview");
-      return;
-    }
     Gfx *stc_poly_p = stc_poly;
     Gfx *stc_poly_d = stc_poly + stc_poly_cap;
     poly_writer_t *p_poly_writer = &poly_writer;
@@ -954,11 +949,6 @@ void gz_col_view(void)
     struct vector line_set;
     if (col_view_line) {
       stc_line = malloc(sizeof(*stc_line) * stc_line_cap);
-      if (!stc_line) {
-        gz.col_view_state = COLVIEW_STOPPING;
-        gz_log("out of memory, stopping colview");
-        return;
-      }
       stc_line_p = stc_line;
       stc_line_d = stc_line + stc_line_cap;
       p_line_writer = &line_writer;
@@ -970,21 +960,9 @@ void gz_col_view(void)
     dyn_poly_buf[0] = malloc(sizeof(*dyn_poly_buf[0]) * dyn_poly_cap);
     dyn_poly_buf[1] = malloc(sizeof(*dyn_poly_buf[1]) * dyn_poly_cap);
 
-    if (!dyn_poly_buf[0] || !dyn_poly_buf[1]) {
-      gz.col_view_state = COLVIEW_STOPPING;
-      gz_log("out of memory, stopping colview");
-      return;
-    }
-
     if (col_view_line) {
       dyn_line_buf[0] = malloc(sizeof(*dyn_line_buf[0]) * dyn_line_cap);
       dyn_line_buf[1] = malloc(sizeof(*dyn_line_buf[1]) * dyn_line_cap);
-
-      if (!dyn_line_buf[0] || !dyn_line_buf[1]) {
-        gz.col_view_state = COLVIEW_STOPPING;
-        gz_log("out of memory, stopping colview");
-        return;
-      }
     }
 
     /* generate static display lists */
@@ -1195,17 +1173,11 @@ void gz_hit_view(void)
   _Bool enable = zu_in_game() &&
                  (z64_game.pause_ctxt.state < 2 ||
                   (z64_game.pause_ctxt.state == 2 &&
-                   z64_gameinfo->screenshot_state < 3));
+                   z64_file.gameinfo->screenshot_state < 3));
 
   if (enable && gz.hit_view_state == HITVIEW_START) {
     hit_gfx_buf[0] = malloc(sizeof(*hit_gfx_buf[0]) * hit_gfx_cap);
     hit_gfx_buf[1] = malloc(sizeof(*hit_gfx_buf[1]) * hit_gfx_cap);
-
-    if (!hit_gfx_buf[0] || !hit_gfx_buf[1]) {
-      gz.hit_view_state = HITVIEW_STOPPING;
-      gz_log("out of memory, stopping hitview");
-      return;
-    }
 
     gz.hit_view_state = HITVIEW_ACTIVE;
   }
@@ -1276,7 +1248,7 @@ void gz_path_view(void)
   _Bool enable = zu_in_game() &&
                  (z64_game.pause_ctxt.state < 2 ||
                   (z64_game.pause_ctxt.state == 2 &&
-                   z64_gameinfo->screenshot_state < 3)) &&
+                   z64_file.gameinfo->screenshot_state < 3)) &&
                  z64_game.path_list != NULL;
   _Bool init = gz.path_view_state == PATHVIEW_START ||
                gz.path_view_state == PATHVIEW_RESTARTING;
@@ -1319,23 +1291,11 @@ void gz_path_view(void)
     if (path_view_points) {
       poly_gfx_buf[0] = malloc(sizeof(*poly_gfx_buf[0]) * poly_gfx_cap);
       poly_gfx_buf[1] = malloc(sizeof(*poly_gfx_buf[1]) * poly_gfx_cap);
-
-      if (!poly_gfx_buf[0] || !poly_gfx_buf[1]) {
-        gz.path_view_state = PATHVIEW_STOPPING;
-        gz_log("out of memory, stopping pathview");
-        return;
-      }
     }
 
     if (path_view_lines) {
       line_gfx_buf[0] = malloc(sizeof(*line_gfx_buf[0]) * line_gfx_cap);
       line_gfx_buf[1] = malloc(sizeof(*line_gfx_buf[1]) * line_gfx_cap);
-
-      if (!line_gfx_buf[0] || !line_gfx_buf[1]) {
-        gz.path_view_state = PATHVIEW_STOPPING;
-        gz_log("out of memory, stopping pathview");
-        return;
-      }
     }
 
     gz.path_view_state = PATHVIEW_ACTIVE;
@@ -1511,17 +1471,11 @@ void gz_cull_view(void)
   _Bool enable = zu_in_game() &&
                  (z64_game.pause_ctxt.state < 2 ||
                   (z64_game.pause_ctxt.state == 2 &&
-                   z64_gameinfo->screenshot_state < 3));
+                   z64_file.gameinfo->screenshot_state < 3));
 
   if (enable && gz.cull_view_state == CULLVIEW_START) {
     cull_gfx_buf[0] = malloc(sizeof(*cull_gfx_buf[0]) * cull_gfx_cap);
     cull_gfx_buf[1] = malloc(sizeof(*cull_gfx_buf[1]) * cull_gfx_cap);
-
-    if (!cull_gfx_buf[0] || !cull_gfx_buf[1]) {
-      gz.cull_view_state = CULLVIEW_STOPPING;
-      gz_log("out of memory, stopping cullview");
-      return;
-    }
 
     gz.cull_view_state = CULLVIEW_ACTIVE;
   }
@@ -1529,7 +1483,6 @@ void gz_cull_view(void)
     /* If no actor is selected, stop */
     if (!gz.selected_actor.ptr) {
       gz.cull_view_state = CULLVIEW_STOP;
-      gz_log("out of memory, stopping cullview");
       return;
     }
     /* Now look through actor type list */
@@ -1664,17 +1617,11 @@ void gz_holl_view(void)
   _Bool enable = zu_in_game() &&
                  (z64_game.pause_ctxt.state < 2 ||
                   (z64_game.pause_ctxt.state == 2 &&
-                   z64_gameinfo->screenshot_state < 3));
+                   z64_file.gameinfo->screenshot_state < 3));
 
   if (enable && gz.holl_view_state == HOLLVIEW_START) {
     holl_gfx_buf[0] = malloc(sizeof(*holl_gfx_buf[0]) * holl_gfx_cap);
     holl_gfx_buf[1] = malloc(sizeof(*holl_gfx_buf[1]) * holl_gfx_cap);
-
-    if (!holl_gfx_buf[0] || !holl_gfx_buf[1]) {
-      gz.holl_view_state = HOLLVIEW_STOPPING;
-      gz_log("out of memory, stopping hollview");
-      return;
-    }
 
     gz.holl_view_state = HOLLVIEW_ACTIVE;
   }
@@ -1886,14 +1833,16 @@ void gz_holl_view(void)
           float offset = (side == 1) ? -(cyl_offset + cyl_height) : cyl_offset;
 
           gDPSetPrimColor(holl_gfx_p++, 0, 0, 0x00, 0xFF, 0x00, 0xFF);
-          draw_cyl(&holl_gfx_p, &holl_gfx_d, 0.0f, offset, 0.0f,
+          draw_cyl(&holl_gfx_p, &holl_gfx_d,
+                   actor->pos_2.x, actor->pos_2.y + offset, actor->pos_2.z,
                    cyl_radius, cyl_height);
 
           if (show_all) {
             offset = (side == 0) ? -(cyl_offset + cyl_height) : cyl_offset;
 
             gDPSetPrimColor(holl_gfx_p++, 0, 0, 0xFF, 0x00, 0x00, 0x80);
-            draw_cyl(&holl_gfx_p, &holl_gfx_d, 0.0f, offset, 0.0f,
+            draw_cyl(&holl_gfx_p, &holl_gfx_d,
+                     actor->pos_2.x, actor->pos_2.y + offset, actor->pos_2.z,
                      cyl_radius, cyl_height);
           }
 
@@ -1905,7 +1854,8 @@ void gz_holl_view(void)
             break;
 
           gDPSetPrimColor(holl_gfx_p++, 0, 0, 0x00, 0xFF, 0x00, 0xFF);
-          draw_cyl(&holl_gfx_p, &holl_gfx_d, 0.0f, cyl_offset, 0.0f,
+          draw_cyl(&holl_gfx_p, &holl_gfx_d,
+                   actor->pos_2.x, actor->pos_2.y + cyl_offset, actor->pos_2.z,
                    cyl_radius, cyl_height);
           break;
         }
@@ -1919,58 +1869,12 @@ void gz_holl_view(void)
     gSPDisplayList((*p_gfx_p)++, holl_gfx);
   }
 
-  if (gz.holl_view_state == HOLLVIEW_STOP)
-    gz.holl_view_state = HOLLVIEW_STOPPING;
-  else if (gz.holl_view_state == HOLLVIEW_STOPPING) {
+  if (gz.holl_view_state == HOLLVIEW_BEGIN_STOP)
+    gz.holl_view_state = HOLLVIEW_STOP;
+  else if (gz.holl_view_state == HOLLVIEW_STOP) {
     release_mem(&holl_gfx_buf[0]);
     release_mem(&holl_gfx_buf[1]);
 
     gz.holl_view_state = HOLLVIEW_INACTIVE;
-  }
-}
-
-void gz_guard_view(void)
-{
-  const int guard_view_cap = 0x800;
-  static Gfx *guard_view_buf[2] = { NULL, NULL };
-  static int guard_view_idx = 0;
-  _Bool enable = zu_in_game() && z64_game.pause_ctxt.state == 0;
-
-  if (gz.guard_view_state == GUARDVIEW_START) {
-    guard_view_buf[0] = malloc(sizeof(*guard_view_buf[0]) * guard_view_cap);
-    guard_view_buf[1] = malloc(sizeof(*guard_view_buf[1]) * guard_view_cap);
-    gz.guard_view_state = GUARDVIEW_ACTIVE;
-  }
-
-  if (enable && gz.guard_view_state == GUARDVIEW_ACTIVE) {
-    Gfx *guard_gfx = guard_view_buf[guard_view_idx];
-    Gfx *guard_gfx_p = guard_gfx;
-    Gfx *guard_gfx_d = guard_gfx + guard_view_cap;
-    guard_view_idx = (guard_view_idx + 1) % 2;
-
-    init_poly_gfx(&guard_gfx_p, &guard_gfx_d, SETTINGS_COLVIEW_SURFACE, 1, 1);
-
-    gDPSetPrimColor(guard_gfx_p++, 0, 0, 0xFF, 0xFF, 0xFF, 0x80);
-
-    for (int i = 0; i < z64_part_max; i++) {
-      z64_part_t *part = &z64_part_space[i];
-      if (part->time > 0 && part->part_id == 0x18) {
-        draw_ico_sphere(&guard_gfx_p, &guard_gfx_d,
-                        part->pos.x, part->pos.y, part->pos.z, 30);
-      }
-    }
-
-    gSPEndDisplayList(guard_gfx_p++);
-    dcache_wb(guard_gfx, sizeof(*guard_gfx) * guard_view_cap);
-
-    gSPDisplayList(z64_ctxt.gfx->poly_xlu.p++, guard_gfx);
-  }
-
-  if (gz.guard_view_state == GUARDVIEW_BEGIN_STOP)
-    gz.guard_view_state = GUARDVIEW_STOP;
-  else if (gz.guard_view_state == GUARDVIEW_STOP) {
-    release_mem(&guard_view_buf[0]);
-    release_mem(&guard_view_buf[1]);
-    gz.guard_view_state = GUARDVIEW_INACTIVE;
   }
 }

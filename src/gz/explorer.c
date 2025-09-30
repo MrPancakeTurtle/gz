@@ -241,8 +241,6 @@ static int draw_proc(struct menu_item *item,
       uint32_t scene_vrom_end = scene_entry->scene_vrom_end;
       uint32_t scene_vrom_size = scene_vrom_end - scene_vrom_start;
       data->scene_file = malloc(scene_vrom_size);
-      if (!data->scene_file)
-        return 0;
       zu_getfile(scene_vrom_start, data->scene_file, scene_vrom_size);
     }
     stab.seg[Z64_SEG_SCENE] = MIPS_KSEG0_TO_PHYS(data->scene_file);
@@ -262,8 +260,6 @@ static int draw_proc(struct menu_item *item,
       uint32_t room_vrom_end = room_files[data->room_index].vrom_end;
       uint32_t room_vrom_size = room_vrom_end - room_vrom_start;
       data->room_file = malloc(room_vrom_size);
-      if (!data->room_file)
-        return 0;
       zu_getfile(room_vrom_start, data->room_file, room_vrom_size);
       stab.seg[Z64_SEG_ROOM] = MIPS_KSEG0_TO_PHYS(data->room_file);
       /* populate mesh */
@@ -302,6 +298,10 @@ static int draw_proc(struct menu_item *item,
   /* render room */
   if (data->state == STATE_RENDER && data->room_file) {
     /* initialize rcp for rendering rooms */
+    static void *zbuf = NULL;
+    if (!zbuf)
+      zbuf = memalign(64, 2 * Z64_SCREEN_WIDTH * Z64_SCREEN_HEIGHT);
+
     static Gfx init_rcp[] = {
       /* rsp settings */
       gsSPSegment(0x08, &null_dl),
@@ -310,26 +310,20 @@ static int draw_proc(struct menu_item *item,
       gsSPSegment(0x0B, &null_dl),
       gsSPSegment(0x0C, &null_dl),
       gsSPSegment(0x0D, &null_dl),
-      gsSPTexture(0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_OFF),
       gsSPLoadGeometryMode(G_ZBUFFER | G_SHADE | G_CULL_BACK | G_LIGHTING |
                            G_SHADING_SMOOTH),
-      /* clear Z buffer */
-      gsDPPipeSync(),
-      gsDPSetOtherMode(G_AD_DISABLE | G_CD_DISABLE | G_CK_NONE | G_TC_FILT |
-                       G_TF_BILERP | G_TT_NONE | G_TL_TILE | G_TD_CLAMP |
-                       G_TP_NONE | G_CYC_1CYCLE | G_PM_NPRIMITIVE,
-                       G_AC_NONE | G_ZS_PRIM | CVG_DST_CLAMP | FORCE_BL |
-                       ZMODE_OPA | Z_UPD | IM_RD |
-                       GBL_c1(G_BL_CLR_IN, G_BL_A_IN, G_BL_CLR_MEM, G_BL_1MA) |
-                       GBL_c2(G_BL_CLR_IN, G_BL_A_IN, G_BL_CLR_MEM, G_BL_1MA)),
-      gsDPSetCombineLERP(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-      gsDPSetPrimDepth(0x7FFF, 0),
-      gsDPFillRectangle(0, 0, Z64_SCREEN_WIDTH, Z64_SCREEN_HEIGHT),
-      /* other rdp settings */
-      gsDPPipeSync(),
+      /* rdp settings */
+      gsDPSetAlphaCompare(G_AC_NONE),
       gsDPSetDepthSource(G_ZS_PIXEL),
+      gsDPSetAlphaDither(G_AD_DISABLE),
+      gsDPSetColorDither(G_CD_DISABLE),
+      gsDPSetCombineKey(G_OFF),
+      gsDPSetTextureConvert(G_TC_FILT),
+      gsDPSetTextureFilter(G_TF_BILERP),
+      gsDPSetTextureLOD(G_TL_TILE),
       gsDPSetTexturePersp(G_TP_PERSP),
       gsDPSetCycleType(G_CYC_2CYCLE),
+      gsDPPipelineMode(G_PM_NPRIMITIVE),
       gsDPSetEnvColor(0xFF, 0xFF, 0xFF, 0xFF),
       gsDPSetFogColor(0x00, 0x00, 0x00, 0x00),
       gsDPSetScissor(G_SC_NON_INTERLACE, 32, 32,
@@ -338,6 +332,16 @@ static int draw_proc(struct menu_item *item,
     };
     gDisplayListAppend(&data->gfx.poly_opa.p,
       gsDPPipeSync(),
+      gsDPSetCycleType(G_CYC_FILL),
+      gsDPSetRenderMode(G_RM_NOOP, G_RM_NOOP2),
+      gsDPSetColorImage(G_IM_FMT_RGBA, G_IM_SIZ_16b, Z64_SCREEN_WIDTH, zbuf),
+      gsDPSetFillColor((GPACK_ZDZ(G_MAXFBZ, 0) << 16) |
+                       GPACK_ZDZ(G_MAXFBZ, 0)),
+      gsDPFillRectangle(0, 0, Z64_SCREEN_WIDTH - 1, Z64_SCREEN_HEIGHT - 1),
+      gsDPPipeSync(),
+      gsDPSetColorImage(G_IM_FMT_RGBA, G_IM_SIZ_16b, Z64_SCREEN_WIDTH,
+                        ZU_MAKE_SEG(Z64_SEG_CIMG, 0)),
+      gsDPSetDepthImage(zbuf),
       gsSPSegment(Z64_SEG_SCENE, data->scene_file),
       gsSPSegment(Z64_SEG_ROOM, data->room_file),
       gsSPDisplayList(init_rcp),

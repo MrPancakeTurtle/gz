@@ -96,7 +96,7 @@ static int holl_view_proc(struct menu_item *item,
   }
   else if (reason == MENU_CALLBACK_SWITCH_OFF) {
     if (gz.holl_view_state != HOLLVIEW_INACTIVE)
-      gz.holl_view_state = HOLLVIEW_STOP;
+      gz.holl_view_state = HOLLVIEW_BEGIN_STOP;
   }
   else if (reason == MENU_CALLBACK_THINK) {
     _Bool state = gz.holl_view_state == HOLLVIEW_START ||
@@ -130,27 +130,6 @@ static int holl_view_all_proc(struct menu_item *item,
     settings->bits.holl_view_all = 0;
   else if (reason == MENU_CALLBACK_THINK)
     menu_checkbox_set(item, settings->bits.holl_view_all);
-  return 0;
-}
-
-static int guard_view_proc(struct menu_item *item,
-                         enum menu_callback_reason reason,
-                         void *data)
-{
-  if (reason == MENU_CALLBACK_SWITCH_ON) {
-    if (gz.guard_view_state == GUARDVIEW_INACTIVE)
-      gz.guard_view_state = GUARDVIEW_START;
-  }
-  else if (reason == MENU_CALLBACK_SWITCH_OFF) {
-    if (gz.guard_view_state != GUARDVIEW_INACTIVE)
-      gz.guard_view_state = GUARDVIEW_BEGIN_STOP;
-  }
-  else if (reason == MENU_CALLBACK_THINK) {
-    _Bool state = gz.guard_view_state == GUARDVIEW_START ||
-                  gz.guard_view_state == GUARDVIEW_ACTIVE;
-    if (menu_checkbox_get(item) != state)
-      menu_checkbox_set(item, state);
-  }
   return 0;
 }
 
@@ -655,9 +634,6 @@ struct menu *gz_scene_menu(void)
   menu_add_checkbox(&visuals, 18, 8, hide_rooms_proc, NULL);
   menu_add_static(&visuals, 0, 9, "hide actors", 0xC0C0C0);
   menu_add_checkbox(&visuals, 18, 9, hide_actors_proc, NULL);
-  /* guard vision control */
-  menu_add_static(&visuals, 0, 10, "show guards view", 0xC0C0C0);
-  menu_add_checkbox(&visuals, 18, 10, guard_view_proc, NULL);
 
   /* populate camera menu */
   camera.selector = menu_add_submenu(&camera, 0, 0, NULL, "return");

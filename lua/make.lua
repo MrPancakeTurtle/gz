@@ -20,34 +20,44 @@ if make_result ~= 0 then error("failed to build gz", 0) end
 print("loading file system")
 local fs = gru.z64fs_load_blob(rom)
 
-print("patching files")
-local patches = { gru.gsc_load("hooks/gz/" .. gz_version .. "/gz.gsc") }
-for _,v in pairs(rom_info.patches) do
-  patches[#patches + 1] = gru.gsc_load("gsc/" .. rom_info.data_dir .. "/" .. v .. ".gsc")
-end
-local do_hooks = loadfile("lua/hooks.lua")
-do_hooks(rom_info, fs, patches)
+print("patching code file")
+local code_file = fs:get(rom_info.code_ind)
+local hooks = gru.gsc_load("hooks/gz/" .. gz_version .. "/gz.gsc")
+hooks:shift(-rom_info.code_ram)
+hooks:apply_be(code_file)
+local ups_size_patch = gru.gsc_load("gsc/" .. rom_info.data_dir ..
+                                    "/ups_size_patch.gsc")
+ups_size_patch:shift(-rom_info.code_ram)
+ups_size_patch:apply_be(code_file)
+fs:replace(rom_info.code_ind, code_file, fs:compressed(rom_info.code_ind))
 
 print("reassembling rom")
 local patched_rom = fs:assemble_rom()
 
-print("inserting payload")
-local bin = gru.blob_load("bin/gz/" .. gz_version .. "/gz.bin")
-local gz_start = bin:read32be(0x0)
-local gz_size = bin:read32be(0x4)
-local ldr_size = bin:read32be(0x8)
-local ldr_rom_lui_ori = bin:read32be(0xC)
-local gz = bin:copy(gz_start, gz_size)
-
-if gz:size() % 16 ~= 0 then gz:resize(gz:size() + 16 - gz:size() % 16) end
+print("building ldr")
+local gz = gru.blob_load("bin/gz/" .. gz_version .. "/gz.bin")
 local payload_rom = fs:prom_tail()
-local ldr = gz:copy(0, ldr_size)
-ldr:write16be(ldr_rom_lui_ori + 0x2, (payload_rom | 0x10000000) >> 16)
-ldr:write16be(ldr_rom_lui_ori + 0x6, (payload_rom | 0x10000000))
-local old_ldr = patched_rom:copy(0x1000, ldr_size)
-gz:write(0, old_ldr)
+local payload_ram = 0x80400060 - 0x60
+local payload_size = gz:size() + 0x60
+local _,_,make_result = os.execute(string.format(make .. " clean-ldr && " ..
+                                                 make ..  " ldr" ..
+                                                 " CPPFLAGS='" ..
+                                                 " -DDMA_ROM=0x%08X" ..
+                                                 " -DDMA_RAM=0x%08X" ..
+                                                 " -DDMA_SIZE=0x%08X'",
+                                                 payload_rom,
+                                                 payload_ram,
+                                                 payload_size))
+if make_result ~= 0 then error("failed to build ldr", 0) end
+
+print("inserting payload")
+local mem_patch = gru.gsc_load("gsc/" .. rom_info.data_dir .. "/mem_patch.gsc")
+mem_patch:apply_be(patched_rom)
+local ldr = gru.blob_load("bin/ldr/ldr.bin")
+local old_ldr = patched_rom:copy(0x1000, 0x60)
 patched_rom:write(0x1000, ldr)
-patched_rom:write(payload_rom, gz)
+patched_rom:write(payload_rom, old_ldr)
+patched_rom:write(payload_rom + 0x60, gz)
 patched_rom:crc_update()
 
 return rom_info, rom, patched_rom
