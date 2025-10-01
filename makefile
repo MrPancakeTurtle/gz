@@ -6,7 +6,8 @@ ifeq ('$(PACKAGE_VERSION)', '')
 PACKAGE_VERSION       = Unknown version
 endif
 endif
-target                = mips64
+TARGET_TOOLS          = mips64-ultra-elf mips64
+target               := $(shell for i in $(TARGET_TOOLS); do if type $${i}-gcc >/dev/null 2>&1; then echo $${i}; break; fi done)
 program_prefix        = $(target)-
 AS                    = $(program_prefix)as
 CCAS                  = $(program_prefix)gcc -x assembler-with-cpp
